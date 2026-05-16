@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════
+#  JobTracker Pro — .gitignore
+#  Everything listed here is NEVER committed to Git
+# ═══════════════════════════════════════════════════════════════
+
+
+# ── Secrets — NEVER commit these ─────────────────────────────
+.env
+*.pem
+*.key
+*.p12
+*.pfx
+
+
+# ── Python virtual environment ────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+
+# ── Python compiled files ─────────────────────────────────────
+__pycache__/
+*.py[cod]           # .pyc .pyo .pyd
+*.so
+
+
+# ── Flask / SQLAlchemy ────────────────────────────────────────
+instance/
+*.db
+*.sqlite3
+
+
+# ── Flask-Migrate (keep the folder, ignore compiled) ─────────
+migrations/versions/*.pyc
+
+
+# ── ML model files (large — store in S3 or Git LFS instead) ──
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+models/
+
+
+# ── Pytest ────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+
+# ── Uploads / temp files ──────────────────────────────────────
+uploads/
+tmp/
+temp/
+*.pdf
+*.docx
+
+
+# ── OS junk ───────────────────────────────────────────────────
+.DS_Store           # macOS
+Thumbs.db           # Windows
+desktop.ini         # Windows
+
+
+# ── IDEs ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/
+
+
+# ── Node (for browser extension later) ───────────────────────
+node_modules/
+dist/
+build/
