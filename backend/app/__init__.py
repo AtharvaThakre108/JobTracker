@@ -110,6 +110,9 @@ def create_app(config_name: str = "default") -> Flask:
     from app.routes.applications import applications_bp
     app.register_blueprint(applications_bp)
 
+    from app.routes.analytics import analytics_bp
+    app.register_blueprint(analytics_bp)
+
     # The remaining blueprints are registered as we build them in later rounds.
     # Uncomment each one when its file is ready:
 
