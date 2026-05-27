@@ -106,6 +106,10 @@ def create_app(config_name: str = "default") -> Flask:
     from app.routes.auth import auth_bp
     app.register_blueprint(auth_bp)
 
+    # app/__init__.py — add after auth_bp registration
+    from app.routes.applications import applications_bp
+    app.register_blueprint(applications_bp)
+
     # The remaining blueprints are registered as we build them in later rounds.
     # Uncomment each one when its file is ready:
 
