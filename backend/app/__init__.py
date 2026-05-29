@@ -115,6 +115,9 @@ def create_app(config_name: str = "default") -> Flask:
 
     from app.routes.resume import resume_bp
     app.register_blueprint(resume_bp)
+
+    from app.routes.ml import ml_bp
+    app.register_blueprint(ml_bp)
     # The remaining blueprints are registered as we build them in later rounds.
     # Uncomment each one when its file is ready:
 
