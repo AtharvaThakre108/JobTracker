@@ -19,6 +19,7 @@ import re
 import io
 import logging
 from typing import Optional
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
