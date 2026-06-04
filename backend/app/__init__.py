@@ -105,8 +105,10 @@ def create_app(config_name: str = "default") -> Flask:
 
     from app.routes.auth import auth_bp
     app.register_blueprint(auth_bp)
-
-    # app/__init__.py — add after auth_bp registration
+    
+    # The remaining blueprints are registered as we build them in later rounds.
+    # Uncomment each one when its file is ready:
+    
     from app.routes.applications import applications_bp
     app.register_blueprint(applications_bp)
 
@@ -118,24 +120,13 @@ def create_app(config_name: str = "default") -> Flask:
 
     from app.routes.ml import ml_bp
     app.register_blueprint(ml_bp)
-    # The remaining blueprints are registered as we build them in later rounds.
-    # Uncomment each one when its file is ready:
 
-    # from app.routes.applications import applications_bp
-    # app.register_blueprint(applications_bp)
+    from app.routes.jobs import jobs_bp
+    app.register_blueprint(jobs_bp)
 
-    # from app.routes.analytics import analytics_bp
-    # app.register_blueprint(analytics_bp)
-
-    # from app.routes.resume import resume_bp
-    # app.register_blueprint(resume_bp)
-
-    # from app.routes.jobs import jobs_bp
-    # app.register_blueprint(jobs_bp)
-
-    # from app.routes.ml import ml_bp
-    # app.register_blueprint(ml_bp)
-
+    # celery_init_app
+    # celery_app = celery_init_app(app)
+    
     # from app.routes.notifications import notifications_bp
     # app.register_blueprint(notifications_bp)
 
