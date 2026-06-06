@@ -1,26 +1,13 @@
 # app/scraper/indeed.py
 # ─────────────────────────────────────────────────────────────────────────────
-# Indeed job listing scraper.
-#
-# FLOW:
-#   1. Navigate to indeed.co.in/jobs?q=<role>&l=<location>
-#   2. Extract job cards from search results page
-#   3. For each card, fetch the full job description
-#   4. Return list of structured job dicts
-#
-# RATE LIMITING:
-#   Max 2 pages per search, 1–3 second delay between requests.
-#   This keeps us well within safe limits.
-#
-# NOTE:
-#   Indeed changes its HTML structure periodically.
-#   If selectors stop working, inspect the page and update them here.
-#   The selectors below are current as of mid-2025.
+# Indeed India job scraper.
 # ─────────────────────────────────────────────────────────────────────────────
 
+import json
 import logging
+import os
 from typing import Optional
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode
 
 from app.scraper.base import BaseScraper
 
@@ -63,29 +50,25 @@ class IndeedScraper(BaseScraper):
         """
         jobs: list[dict] = []
 
-        # ── Build search URL ──────────────────────────────────────────────────
-        params: dict = {
-            "q": role,
-            "l": location,
-            "sort": "date",   # Newest first
-        }
+        params: dict = {"q": role, "l": location, "sort": "date"}
         search_url: str = f"{INDEED_BASE}/jobs?{urlencode(params)}"
 
         logger.info(f"Indeed search: {role} in {location}")
 
         try:
-            self.goto(search_url)
+            # ── Load cookies ──────────────────────────────────────────────────────
+            self._load_cookies()
 
-            # Check for CAPTCHA immediately
+            # ── Land on homepage first (looks more human) ─────────────────────────
+            self.goto("https://in.indeed.com", wait_until="domcontentloaded")
+            self._human_delay(2.0, 4.0)
+
+            # ── Now navigate to search ────────────────────────────────────────────
+            self.goto(search_url, wait_until="domcontentloaded")
+            self._human_delay(2.0, 3.0)
+
             if self.is_captcha():
                 logger.warning("CAPTCHA detected on Indeed search page.")
-                return []
-
-            # ── Extract job cards from search results ─────────────────────────
-            job_cards = self._extract_job_cards()
-
-            if not job_cards:
-                logger.warning("No job cards found. Indeed may have changed its HTML.")
                 return []
 
             # ── Fetch full description for each card ──────────────────────────
@@ -94,7 +77,7 @@ class IndeedScraper(BaseScraper):
                     detail = self._fetch_job_detail(card)
                     if detail:
                         jobs.append(detail)
-                    self._human_delay(1.0, 3.0)   # Be polite between requests
+                    self._human_delay(1.0, 3.0)
                 except Exception as e:
                     logger.warning(f"Failed to fetch job detail: {e}")
                     continue
@@ -105,40 +88,95 @@ class IndeedScraper(BaseScraper):
         logger.info(f"Indeed: found {len(jobs)} jobs for '{role}' in '{location}'")
         return jobs
 
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Cookie management
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _load_cookies(self) -> bool:
+        """
+        Load saved Indeed session cookies into the browser context.
+
+        Looks for indeed_cookies.json in the backend root folder.
+        Export cookies using the Cookie-Editor browser extension after
+        logging into Indeed manually.
+
+        Returns:
+            bool: True if cookies loaded, False if file not found.
+        """
+        cookie_path: str = os.path.join(
+            os.path.dirname(                    # backend/
+                os.path.dirname(                # app/
+                    os.path.dirname(__file__)   # scraper/
+                )
+            ),
+            "indeed_cookies.json",
+        )
+
+        if not os.path.exists(cookie_path):
+            logger.warning("No indeed_cookies.json found. Running without session.")
+            return False
+
+        try:
+            with open(cookie_path, "r") as f:
+                cookies: list[dict] = json.load(f)
+
+            formatted: list[dict] = []
+            for c in cookies:
+                cookie: dict = {
+                    "name":   c.get("name", ""),
+                    "value":  c.get("value", ""),
+                    "domain": c.get("domain", ".indeed.com"),
+                    "path":   c.get("path", "/"),
+                }
+                if c.get("secure") is not None:
+                    cookie["secure"] = c["secure"]
+                if c.get("httpOnly") is not None:
+                    cookie["httpOnly"] = c["httpOnly"]
+                if c.get("sameSite") in ("Strict", "Lax", "None"):
+                    cookie["sameSite"] = c["sameSite"]
+
+                formatted.append(cookie)
+
+            self._context.add_cookies(formatted)
+            logger.info(f"Loaded {len(formatted)} Indeed cookies.")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to load Indeed cookies: {e}")
+            return False
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Job card extraction
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _extract_job_cards(self) -> list[dict]:
         """
         Extract basic job info from the search results page.
-
         Returns list of dicts with title, company, location, job_url.
-        These are used to fetch full descriptions in the next step.
         """
         cards: list[dict] = []
 
-        # Wait for job cards to load
         if not self.wait_for("[data-jk]", timeout=10000):
             logger.warning("Job cards did not load.")
             return []
 
-        # Find all job card elements
         elements = self.page.query_selector_all("[data-jk]")
 
         for el in elements:
             try:
-                # Extract job key (used in URL)
                 job_key: str = el.get_attribute("data-jk") or ""
                 if not job_key:
                     continue
 
-                # Extract basic fields
-                title: str   = self._safe_el_text(el, "[data-testid='jobTitle']")   \
+                title: str   = self._safe_el_text(el, "[data-testid='jobTitle']") \
                                or self._safe_el_text(el, ".jobTitle")
                 company: str = self._safe_el_text(el, "[data-testid='company-name']") \
                                or self._safe_el_text(el, ".companyName")
                 location: str = self._safe_el_text(el, "[data-testid='text-location']") \
                                 or self._safe_el_text(el, ".companyLocation")
-                salary: str  = self._safe_el_text(el, "[data-testid='attribute_snippet_testid']")
-
-                job_url: str = f"{INDEED_BASE}/viewjob?jk={job_key}"
+                salary: str  = self._safe_el_text(
+                    el, "[data-testid='attribute_snippet_testid']"
+                )
 
                 if title and company:
                     cards.append({
@@ -146,7 +184,7 @@ class IndeedScraper(BaseScraper):
                         "company":  company,
                         "location": location,
                         "salary":   salary,
-                        "job_url":  job_url,
+                        "job_url":  f"{INDEED_BASE}/viewjob?jk={job_key}",
                         "job_key":  job_key,
                     })
 
@@ -156,9 +194,13 @@ class IndeedScraper(BaseScraper):
 
         return cards
 
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Job detail fetching
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _fetch_job_detail(self, card: dict) -> Optional[dict]:
         """
-        Navigate to a job's detail page and extract the full description.
+        Navigate to a job detail page and extract the full description.
 
         Args:
             card: Basic job info dict from _extract_job_cards().
@@ -173,22 +215,21 @@ class IndeedScraper(BaseScraper):
                 logger.warning(f"CAPTCHA on job page: {card['job_url']}")
                 return None
 
-            # Wait for description to load
             self.wait_for("#jobDescriptionText", timeout=8000)
 
-            # Extract full description
             description: str = self.safe_text("#jobDescriptionText")
+            title: str       = self.safe_text(
+                "[data-testid='jobsearch-JobInfoHeader-title']"
+            ) or card["title"]
+            company: str     = self.safe_text(
+                "[data-testid='inlineHeader-companyName']"
+            ) or card["company"]
 
-            # Try to get more details from the detail page
-            title:   str = self.safe_text("[data-testid='jobsearch-JobInfoHeader-title']") \
-                           or card["title"]
-            company: str = self.safe_text("[data-testid='inlineHeader-companyName']") \
-                           or card["company"]
-
-            # Detect remote
             content_lower: str = (description + card.get("location", "")).lower()
-            is_remote: bool    = any(w in content_lower for w in
-                                     ["remote", "work from home", "wfh"])
+            is_remote: bool    = any(
+                w in content_lower
+                for w in ["remote", "work from home", "wfh"]
+            )
 
             return {
                 "title":       title,
@@ -205,11 +246,12 @@ class IndeedScraper(BaseScraper):
             logger.warning(f"Detail fetch failed for {card.get('job_url')}: {e}")
             return None
 
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Helper
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _safe_el_text(self, element, selector: str) -> str:
-        """
-        Safely get text from a child element within a parent element.
-        Returns empty string if not found.
-        """
+        """Safely get text from a child element within a parent element."""
         try:
             child = element.query_selector(selector)
             if child:

@@ -80,3 +80,6 @@ logs/
 node_modules/
 dist/
 build/
+
+
+indeed_cookies.json

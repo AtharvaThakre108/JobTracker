@@ -207,17 +207,29 @@ class BaseScraper:
             return False
 
     def is_captcha(self) -> bool:
-        """
-        Detect if the current page has a CAPTCHA challenge.
-        Checks for common CAPTCHA indicators.
-        """
-        content: str = (self.page.content() or "").lower()
-        captcha_signals: list[str] = [
-            "captcha", "recaptcha", "hcaptcha",
-            "are you a human", "verify you are human",
-            "robot", "cloudflare", "just a moment",
-        ]
-        return any(signal in content for signal in captcha_signals)
+        """Detect CAPTCHA or bot-challenge pages."""
+        try:
+            content: str = (self.page.content() or "").lower()
+            url: str     = (self.page.url or "").lower()
+
+            captcha_signals: list[str] = [
+                "captcha", "recaptcha", "hcaptcha",
+                "are you a human", "verify you are human",
+                "robot", "cloudflare", "just a moment",
+                "unusual traffic", "automated", "blocked",
+                "challenge", "security check",
+            ]
+
+            url_signals: list[str] = [
+                "challenge", "security", "blocked",
+            ]
+
+            return (
+                any(s in content for s in captcha_signals) or
+                any(s in url for s in url_signals)
+            )
+        except Exception:
+            return False
 
     # ── Anti-detection helpers ────────────────────────────────────────────────
 

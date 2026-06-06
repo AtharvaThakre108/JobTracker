@@ -27,6 +27,7 @@ import random
 import time
 from datetime import datetime, timezone
 from typing import Optional
+import concurrent.futures
 
 from wsgi import celery_app as celery
 
@@ -261,28 +262,27 @@ def run_autonomous_apply(self, user_id: str) -> dict:
 def _scrape_portal(portal: str, role: str, location: str) -> list[dict]:
     """
     Dispatch to the correct portal scraper.
-
-    Args:
-        portal:   Portal name e.g. "Indeed", "Naukri"
-        role:     Job title / keywords
-        location: City name
-
-    Returns:
-        List of raw job dicts from the scraper.
+    Runs in a separate thread to avoid asyncio loop conflicts on Windows.
     """
-    if portal == "Indeed":
-        from app.scraper.indeed import IndeedScraper
-        with IndeedScraper(headless=True) as scraper:
-            return scraper.search_jobs(role, location, max_results=10)
+    def _run():
+        if portal == "Indeed":
+            from app.scraper.indeed import IndeedScraper
+            with IndeedScraper(headless=True) as scraper:
+                return scraper.search_jobs(role, location, max_results=10)
+        logger.warning(f"Unsupported portal: {portal}")
+        return []
 
-    # Add more portals here as they're built:
-    # elif portal == "Naukri":
-    #     from app.scraper.naukri import NaukriScraper
-    #     with NaukriScraper(headless=True) as scraper:
-    #         return scraper.search_jobs(role, location)
-
-    logger.warning(f"Unsupported portal: {portal}")
-    return []
+    # Run in a thread pool — isolates Playwright from Celery's event loop
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        try:
+            return future.result(timeout=120)   # 2 min timeout per portal
+        except concurrent.futures.TimeoutError:
+            logger.warning(f"Scraping {portal} timed out.")
+            return []
+        except Exception as e:
+            logger.warning(f"Scraping {portal} failed in thread: {e}")
+            return []
 
 
 def _apply_to_job(

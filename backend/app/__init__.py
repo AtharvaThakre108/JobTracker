@@ -130,8 +130,8 @@ def create_app(config_name: str = "default") -> Flask:
     # from app.routes.notifications import notifications_bp
     # app.register_blueprint(notifications_bp)
 
-    # from app.routes.user import user_bp
-    # app.register_blueprint(user_bp)
+    from app.routes.user import user_bp
+    app.register_blueprint(user_bp)
 
     # ── Health check ──────────────────────────────────────────────────────────
     # Used by Railway and monitoring tools to confirm the server is alive.
