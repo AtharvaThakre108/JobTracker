@@ -28,6 +28,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 import concurrent.futures
+from app.tasks.email_tasks import send_auto_apply_summary
 
 from wsgi import celery_app as celery
 
@@ -241,6 +242,11 @@ def run_autonomous_apply(self, user_id: str) -> dict:
     # ── Send summary notification ─────────────────────────────────────────────
     _notify_user(user_id, jobs_applied, jobs_skipped, skip_reasons)
 
+    # Send summary email in background
+    send_auto_apply_summary.delay(
+        user_id, jobs_applied, jobs_skipped, skip_reasons
+    )
+
     logger.info(
         f"[AutoApply] Run complete for {user_id}: "
         f"applied={jobs_applied}, skipped={jobs_skipped}"
@@ -254,6 +260,59 @@ def run_autonomous_apply(self, user_id: str) -> dict:
         "skip_reasons": skip_reasons,
     }
 
+@celery.task(name="app.tasks.apply_tasks.debug_naukri")
+def debug_naukri(role: str = "Python developer", location: str = "Bangalore") -> dict:
+    """
+    Temporary debug task — dumps Naukri page HTML so we can
+    find the correct CSS selectors.
+    """
+    import concurrent.futures
+
+    def _run():
+        from app.scraper.base import BaseScraper
+
+        class DebugScraper(BaseScraper):
+            pass
+
+        with DebugScraper(headless=True) as scraper:
+            from urllib.parse import urlencode
+            slug_role     = role.lower().replace(" ", "-")
+            slug_location = location.lower().replace(" ", "-")
+            url = f"https://www.naukri.com/{slug_role}-jobs-in-{slug_location}"
+
+            scraper.goto(url, wait_until="domcontentloaded")
+            scraper._human_delay(4.0, 6.0)
+
+            # Dump page title and first 3000 chars of HTML
+            title   = scraper.page.title()
+            content = scraper.page.content()
+
+            # Find all unique class names on the page
+            classes = scraper.page.evaluate("""
+                () => {
+                    const els = document.querySelectorAll('[class]');
+                    const names = new Set();
+                    els.forEach(el => {
+                        el.className.split(' ').forEach(c => {
+                            if (c.includes('job') || c.includes('tuple')
+                                || c.includes('list') || c.includes('card')) {
+                                names.add(c);
+                            }
+                        });
+                    });
+                    return Array.from(names).slice(0, 50);
+                }
+            """)
+
+            return {
+                "title":   title,
+                "url":     scraper.page.url,
+                "classes": classes,
+                "html_snippet": content[5000:8000],  # Middle section of HTML
+            }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(_run).result(timeout=120)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Private helpers
@@ -261,28 +320,27 @@ def run_autonomous_apply(self, user_id: str) -> dict:
 
 def _scrape_portal(portal: str, role: str, location: str) -> list[dict]:
     """
-    Dispatch to the correct portal scraper.
-    Runs in a separate thread to avoid asyncio loop conflicts on Windows.
+    Fetch jobs from JSearch API.
+    Portal parameter kept for compatibility — JSearch searches all portals.
     """
-    def _run():
-        if portal == "Indeed":
-            from app.scraper.indeed import IndeedScraper
-            with IndeedScraper(headless=True) as scraper:
-                return scraper.search_jobs(role, location, max_results=10)
-        logger.warning(f"Unsupported portal: {portal}")
-        return []
+    from app.services.job_search_service import search_jobs
 
-    # Run in a thread pool — isolates Playwright from Celery's event loop
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_run)
-        try:
-            return future.result(timeout=120)   # 2 min timeout per portal
-        except concurrent.futures.TimeoutError:
-            logger.warning(f"Scraping {portal} timed out.")
-            return []
-        except Exception as e:
-            logger.warning(f"Scraping {portal} failed in thread: {e}")
-            return []
+    try:
+        # Append "India" to location for better India-specific results
+        location_query: str = (
+            f"{location}, India"
+            if location.lower() not in ("india", "remote")
+            else location
+        )
+        return search_jobs(
+            role=role,
+            location=location_query,
+            max_results=10,
+            date_posted="week",
+        )
+    except Exception as e:
+        logger.warning(f"JSearch failed for {role} in {location}: {e}")
+        return []
 
 
 def _apply_to_job(

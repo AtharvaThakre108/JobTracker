@@ -272,6 +272,11 @@ def update_application(app_id: str):
             new_value={"status": new_status},
         )
 
+    from app.tasks.email_tasks import send_status_change_email
+    send_status_change_email.delay(
+            app.user_id, app.id, old_status, new_status
+        )
+
     # ── Update remaining fields ───────────────────────────────────────────────
     # Only update fields that were actually sent in the request body
     updatable: list[str] = [

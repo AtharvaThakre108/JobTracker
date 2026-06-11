@@ -127,7 +127,8 @@ def register():
 
     log_action("auth.register", entity_type="user", entity_id=user.id, user_id=user.id)
 
-    # TODO Round 7: send verification email via SendGrid
+    from app.tasks.email_tasks import send_verification_email
+    send_verification_email.delay(user.id)
 
     return success(
         data={

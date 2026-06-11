@@ -127,8 +127,8 @@ def create_app(config_name: str = "default") -> Flask:
     # celery_init_app
     # celery_app = celery_init_app(app)
     
-    # from app.routes.notifications import notifications_bp
-    # app.register_blueprint(notifications_bp)
+    from app.routes.notifications import notifications_bp
+    app.register_blueprint(notifications_bp)
 
     from app.routes.user import user_bp
     app.register_blueprint(user_bp)

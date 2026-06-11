@@ -65,6 +65,8 @@ class Config:
     RATELIMIT_DEFAULT: str = "200 per hour;20 per minute"
     RATELIMIT_HEADERS_ENABLED: bool = True    # Send X-RateLimit-* headers to client
 
+    RAPIDAPI_KEY: str = os.environ.get("RAPIDAPI_KEY", "")
+
     # ── LinkedIn OAuth ────────────────────────────────────────
     LINKEDIN_CLIENT_ID: str = os.environ.get("LINKEDIN_CLIENT_ID", "")
     LINKEDIN_CLIENT_SECRET: str = os.environ.get("LINKEDIN_CLIENT_SECRET", "")
